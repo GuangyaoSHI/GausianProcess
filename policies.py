@@ -17,64 +17,44 @@ import random
 from itertools import product
 
 
-class Policy(object):
-    __metaclass__ = ABCMeta
-
-    @abstractmethod
-    def move(self, state):
-        pass
-
-
-class RandomPolicy(Policy):
+class RandomPolicy():
     def move(self, state):
         """
         Chooses moves from the legal moves in a given state
-        return next_node = {robot:[position, attack_indicator]}   
+        return next_node = {robot:position}
         """
         # print(state.legal_moves(state.currNode))
         if not state.legal_moves(state.currNode):
             # there are no available actions
             return {}
-        if state.turn == 'robot':
-            # if it is robots' turn legal_moves = {robot:[actions]}
-            assert type(state.legal_moves(state.currNode)) == dict
-            next_node = copy.deepcopy(state.currNode)
-            for robot in next_node:
-                next_node[robot][0] = random.sample(state.legal_moves(state.currNode)[robot], 1)[0]
-            return next_node
-        else:
-            # if it is attacker's turn legal_moves = [{robot:attack_indicator}]
-            assert type(state.legal_moves(state.currNode)) == list
-            next_node = copy.deepcopy(state.currNode)
-            attacker_move = random.sample(state.legal_moves(state.currNode), 1)[0]
-            for robot in next_node:
-                next_node[robot][1] = attacker_move[robot]
-            return next_node
+        # legal_moves = {robot:[actions]}
+        assert type(state.legal_moves()) == dict
+        next_node = copy.deepcopy(state.currNode)
+        for robot in next_node:
+            next_node[robot] = random.sample(state.legal_moves()[robot], 1)[0]
+        return next_node
 
 
-class MCTSPolicy(Policy):
+class MCTSPolicy():
     """
     Implementation of Monte Carlo Tree Search
     
     """
 
     def __init__(self, root_state):
-        # robot_state = {robot:[pos, attack_indicator]}
+        # robot_state = {robot:pos}
         self.digraph = nx.DiGraph()
         self.EPSILON = 10e-6  # Prevents division by 0 in calculation of UCT
 
         # Constant parameter to weight exploration vs. exploitation for UCT
-        # check other implementations for reward instead of win/lose case
-        # https://github.com/GuangyaoSHI/mcts/blob/master/include/mcts/defaults.hpp
         self.uct_c = 2 * np.sqrt(2)
         self.node_counter = 0
         self.digraph.add_node(self.node_counter,
                               reward=0,
                               n=0,
-                              uct=sys.maxsize,
+                              uct=np.array([sys.maxsize, sys.maxsize]),
                               state=root_state)
         self.node_counter += 1
-        # self.who_is_play = root_state.turn
 
     def is_leaf_node(self, node):
         if (self.digraph.in_degree(node) == 0) \
@@ -108,6 +88,8 @@ class MCTSPolicy(Policy):
                 uct_values[child_node] = self.uct(node=child_node, parent=root)
 
             # Choose the child node that maximizes the expected value given by UCT
+            # you need to change the following line
+            # !!!! following line no longer valid
             best_child_node = max(uct_values.items(), key=operator.itemgetter(1))[0]
 
             return self.selection(best_child_node)
@@ -120,8 +102,7 @@ class MCTSPolicy(Policy):
         else:
             curr_game_pos = self.digraph.nodes[node]['state'].currNode
             # robot turn: legal_moves = {robot:[actions]}
-            # attacker turn: legal_moves= [{robot:indicator}]
-            legal_moves = self.digraph.nodes[node]['state'].legal_moves(curr_game_pos)
+            legal_moves = self.digraph.nodes[node]['state'].legal_moves()
             # print('Legal moves: {}'.format(legal_moves))
             # if node is a terminal state, e.g. run out of budget
             # legal_moves will be empty
@@ -130,54 +111,35 @@ class MCTSPolicy(Policy):
         # for each available action from the current state, add all new states
         # to the tree
         child_node_id = []
-        if self.digraph.nodes[node]['state'].turn == 'robot':
-            # print('We are expanding robots actions')
-            # legal_moves = {robot:[actions]}
-            # Todo: if some robots have empty set, the following code
-            # will return empty set on joint_moves
-            # !!!!!this is a problem!!!!
-            joint_actions = list(product(*list(legal_moves.values())))
-            # check whether the joint action set is empty
-            assert joint_actions, 'joint action set is empty'
-            joint_moves = [dict(zip(list(legal_moves.keys()), joint_action)) \
-                           for joint_action in joint_actions]
-            for move in joint_moves:
-                # from move = {robot:position}
-                # to node = {robot:[position, indicator]}
-                next_node = copy.deepcopy(curr_game_pos)
-                for robot in next_node:
-                    next_node[robot][0] = move[robot]
-                    # print('adding to expansion analysis with: {}'.format(next_node))
-                child = self.digraph.nodes[node]['state'].transition_function(next_node)
-                self.digraph.add_node(self.node_counter,
-                                      reward=0,
-                                      n=0,
-                                      uct=sys.maxsize,
-                                      state=child)
-                self.digraph.add_edge(node, self.node_counter, action=next_node)
-                child_node_id.append(self.node_counter)
-                self.node_counter += 1
-            # return first new child
-            # Todo: uniform sampling
-        else:
-            # it is attacker's turn
-            # legal_moves = [{robot:indicator}]
-            # print('We are expanding attackers actions')
-            for move in legal_moves:
-                next_node = copy.deepcopy(curr_game_pos)
-                for robot in next_node:
-                    next_node[robot][1] = move[robot]
-                # print('adding to expansion analysis with: {}'.format(next_node))
-                child = self.digraph.nodes[node]['state'].transition_function(next_node)
-                self.digraph.add_node(self.node_counter,
-                                      reward=0,
-                                      n=0,
-                                      uct=sys.maxsize,
-                                      state=child)
-                self.digraph.add_edge(node, self.node_counter, action=next_node)
-                child_node_id.append(self.node_counter)
-                self.node_counter += 1
 
+        # print('We are expanding robots actions')
+        # legal_moves = {robot:[actions]}
+        # Todo: if some robots have empty set, the following code
+        # will return empty set on joint_moves
+        # !!!!!this is a problem!!!!
+        joint_actions = list(product(*list(legal_moves.values())))
+        # check whether the joint action set is empty
+        assert joint_actions, 'joint action set is empty'
+        joint_moves = [dict(zip(list(legal_moves.keys()), joint_action))
+                       for joint_action in joint_actions]
+        for move in joint_moves:
+            # from move = {robot:position}
+            # to node = {robot:[position, indicator]}
+            next_node = copy.deepcopy(curr_game_pos)
+            for robot in next_node:
+                next_node[robot] = move[robot]
+                # print('adding to expansion analysis with: {}'.format(next_node))
+            child = self.digraph.nodes[node]['state'].transition_function(next_node)
+            self.digraph.add_node(self.node_counter,
+                                  reward=0,
+                                  n=0,
+                                  uct=np.array([sys.maxsize, sys.maxsize]),
+                                  state=child)
+            self.digraph.add_edge(node, self.node_counter, action=next_node)
+            child_node_id.append(self.node_counter)
+            self.node_counter += 1
+        # return first new child
+        # Todo: uniform sampling
         return child_node_id[0]
 
     def simulation(self, node):
@@ -220,7 +182,7 @@ class MCTSPolicy(Policy):
                     current = list(self.digraph.predecessors(current))[0]
                 except IndexError:
                     break
-
+        # update uct value after backpropagation
         for node in self.digraph.nodes:
             # this node has one parent
             # print('node {} parent is {}'.format(node, self.digraph.predecessors(node)))
@@ -239,18 +201,14 @@ class MCTSPolicy(Policy):
         n = self.digraph.nodes[node]['n']  # Number of plays from this node
         # total reward generated passing through this node
         # keep track of average is better
+        # reward = np.array([x, y])
         reward = self.digraph.nodes[node]['reward']
         # number of times the parent node has been visited
         N = self.digraph.nodes[parent]['n']
         c = self.uct_c
         epsilon = self.EPSILON
-
         exploitation_value = reward / (n + epsilon)
         exploration_value = 2.0 * c * np.sqrt(2 * np.log(N) / (n + epsilon))
-        if self.digraph.nodes[parent]['state'].turn == 'robot':
-            value = exploitation_value + exploration_value
-        else:
-            value = -exploitation_value + exploration_value
+        value = exploitation_value + exploration_value
         self.digraph.nodes[node]['uct'] = value
-
         return value

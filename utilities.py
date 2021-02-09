@@ -186,16 +186,14 @@ def compute_reward(game, path, attack):
 
 def action_selection(MCTS):
     # MCTS is monte carlo search tree
-    turn = MCTS.digraph.nodes[0]['state'].turn
+
     # {reward:action}
-    actions = {}
+
     for node in MCTS.digraph.successors(0):
         reward = MCTS.digraph.nodes[node]['reward'] / MCTS.digraph.nodes[node]['n']
-        if turn == 'attacker':
-            reward = - reward
-        actions[reward] = \
-            MCTS.digraph.edges[0, node]['action']
-    next_node = actions[max(actions)]
+        # reward is a np.array
+        # define your rule here to select a node
+    next_node = {}
     return next_node
 
 
